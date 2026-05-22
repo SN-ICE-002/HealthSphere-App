@@ -3,7 +3,8 @@ const db = require('../src/config/db');
 const createTables = async () => {
   const queryText = `
     -- Drop tables if you want a fresh start
-    DROP TABLE IF EXISTS appointments, doctor_notes, prescriptions, allergies, medical_history, patients, users CASCADE;
+    DROP VIEW IF EXISTS staff CASCADE;
+    DROP TABLE IF EXISTS appointments, doctor_notes, prescriptions, allergies, medical_history, patients, users, roles, role_permissions, permissions, help_desk_requests CASCADE;
 
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -65,6 +66,30 @@ const createTables = async () => {
       appointment_date TIMESTAMP NOT NULL,
       status VARCHAR(20) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'completed', 'cancelled', 'no_show'))
     );
+
+    -- Role-based access control tables
+    CREATE TABLE IF NOT EXISTS roles (
+      role_id SERIAL PRIMARY KEY,
+      role_name VARCHAR(50) UNIQUE NOT NULL
+    );
+
+    INSERT INTO roles (role_name) VALUES ('Admin'), ('Doctor'), ('Nurse'), ('Patient') ON CONFLICT DO NOTHING;
+
+    -- Create staff view to make querying easier for the user
+    CREATE OR REPLACE VIEW staff AS
+    SELECT 
+        u.id AS staff_id, 
+        u.id AS user_id, 
+        r.role_id, 
+        u.phone AS phone_number, 
+        u.created_at,
+        u.full_name,
+        u.email,
+        u.role AS user_role,
+        u.specialty
+    FROM users u
+    LEFT JOIN roles r ON LOWER(u.role) = LOWER(r.role_name)
+    WHERE u.role IN ('doctor', 'nurse', 'admin');
   `;
 
   try {

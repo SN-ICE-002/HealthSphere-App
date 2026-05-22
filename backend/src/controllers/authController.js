@@ -57,7 +57,7 @@ exports.login = async (req, res) => {
 };
 
 exports.register = async (req, res) => {
-  const { name, fullName, email, password, phone, dob, bloodType, emergencyContactName, emergencyContactNumber, allergies, medicalHistory } = req.body;
+  const { name, fullName, email, password, phone, address, dob, gender, bloodType, emergencyContactName, emergencyContactNumber, allergies, medicalHistory } = req.body;
   const finalName = name || fullName;
 
   console.log('Backend received register request:', req.body);
@@ -91,10 +91,10 @@ exports.register = async (req, res) => {
 
     // 3. Insert into patients table
     const insertPatientQuery = `
-      INSERT INTO patients (user_id, date_of_birth, contact_number, blood_type, emergency_contact_name, emergency_contact_number)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO patients (user_id, date_of_birth, contact_number, blood_type, address, gender, emergency_contact_name, emergency_contact_number)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `;
-    await db.query(insertPatientQuery, [newUser.id, dob, phone, bloodType, emergencyContactName, emergencyContactNumber]);
+    await db.query(insertPatientQuery, [newUser.id, dob, phone, bloodType, address, gender, emergencyContactName, emergencyContactNumber]);
 
     // 4. Insert Allergies
     if (allergies && allergies.trim() !== '') {
@@ -135,3 +135,111 @@ exports.register = async (req, res) => {
     res.status(500).json({ message: 'Server error during registration' });
   }
 };
+
+exports.requestResetCode = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required.' });
+  }
+
+  try {
+    const query = 'SELECT id, full_name FROM users WHERE email = $1 AND role = $2';
+    const result = await db.query(query, [email, 'patient']);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'No patient account found with this email.' });
+    }
+
+    const user = result.rows[0];
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digit code
+    const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiry
+
+    await db.query(
+      'UPDATE users SET reset_code = $1, reset_code_expires = $2 WHERE id = $3',
+      [code, expires, user.id]
+    );
+
+    // Help Desk logic will be implemented here
+    res.json({ message: 'Request submitted to Help Desk. An administrator will contact you shortly.' });
+  } catch (error) {
+    console.error('Request reset code error:', error);
+    res.status(500).json({ message: 'Server error during request.' });
+  }
+};
+
+exports.verifyCode = async (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({ message: 'Email and verification code are required.' });
+  }
+
+  try {
+    const query = 'SELECT id, reset_code, reset_code_expires FROM users WHERE email = $1';
+    const result = await db.query(query, [email]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.reset_code || user.reset_code !== code) {
+      return res.status(401).json({ message: 'Invalid verification code.' });
+    }
+
+    if (new Date() > new Date(user.reset_code_expires)) {
+      return res.status(401).json({ message: 'Verification code has expired.' });
+    }
+
+    res.json({ message: 'Code verified successfully.' });
+  } catch (error) {
+    console.error('Verify code error:', error);
+    res.status(500).json({ message: 'Server error during verification.' });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ message: 'Email, code, and new password are required.' });
+  }
+
+  try {
+    // 1. Verify code again to ensure security
+    const query = 'SELECT id, reset_code, reset_code_expires FROM users WHERE email = $1';
+    const result = await db.query(query, [email]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.reset_code || user.reset_code !== code) {
+      return res.status(401).json({ message: 'Invalid or expired verification session.' });
+    }
+
+    if (new Date() > new Date(user.reset_code_expires)) {
+      return res.status(401).json({ message: 'Session has expired. Please request a new code.' });
+    }
+
+    // 2. Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // 3. Update password and clear the code
+    await db.query(
+      'UPDATE users SET password_hash = $1, reset_code = NULL, reset_code_expires = NULL WHERE id = $2', 
+      [hashedPassword, user.id]
+    );
+
+    res.json({ message: 'Password reset successful. You can now login with your new password.' });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Server error during password reset.' });
+  }
+};

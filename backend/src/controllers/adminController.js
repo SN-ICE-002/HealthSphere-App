@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const bcrypt = require('bcryptjs');
 
 // GET /api/admin/patients — list all patients
 exports.getAllPatients = async (req, res) => {
@@ -7,6 +8,7 @@ exports.getAllPatients = async (req, res) => {
       SELECT u.id, u.full_name AS name, u.email,
              p.contact_number AS phone, p.date_of_birth AS dob,
              p.blood_type AS "bloodType",
+             p.address, p.gender,
              p.emergency_contact_name AS "emergencyContactName",
              p.emergency_contact_number AS "emergencyContactNumber",
              COALESCE((SELECT array_agg(allergy_name) FROM allergies WHERE patient_id = u.id), ARRAY[]::VARCHAR[]) AS allergies,
@@ -24,7 +26,7 @@ exports.getAllPatients = async (req, res) => {
 
 // POST /api/admin/patients — create a new patient (admin flow)
 exports.createPatient = async (req, res) => {
-  const { name, fullName, email, phone, dob, gender, bloodType, emergencyContactName, emergencyContactNumber, password } = req.body;
+  const { name, fullName, email, phone, dob, gender, address, bloodType, emergencyContactName, emergencyContactNumber, password } = req.body;
   const finalName = name || fullName;
 
   console.log('Backend received createPatient request:', req.body);
@@ -52,14 +54,14 @@ exports.createPatient = async (req, res) => {
     const newUser = userResult.rows[0];
 
     await db.query(
-      `INSERT INTO patients (user_id, date_of_birth, contact_number, blood_type, emergency_contact_name, emergency_contact_number)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [newUser.id, dob || null, phone || null, bloodType || null, emergencyContactName || null, emergencyContactNumber || null]
+      `INSERT INTO patients (user_id, date_of_birth, contact_number, blood_type, address, gender, emergency_contact_name, emergency_contact_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [newUser.id, dob || null, phone || null, bloodType || null, address || null, gender || null, emergencyContactName || null, emergencyContactNumber || null]
     );
 
     res.status(201).json({
       message: 'Patient created successfully',
-      patient: { id: newUser.id, name: newUser.name, email: newUser.email, phone, dob, bloodType, emergencyContactName, emergencyContactNumber }
+      patient: { id: newUser.id, name: newUser.name, email: newUser.email, phone, dob, bloodType, gender, address, emergencyContactName, emergencyContactNumber }
     });
   } catch (error) {
     console.error('Error creating patient:', error);
@@ -70,7 +72,7 @@ exports.createPatient = async (req, res) => {
 // PUT /api/admin/patients/:id — update a patient
 exports.updatePatient = async (req, res) => {
   const { id } = req.params;
-  const { name, fullName, email, phone, dob, bloodType, emergencyContactName, emergencyContactNumber } = req.body;
+  const { name, fullName, email, phone, dob, gender, address, bloodType, emergencyContactName, emergencyContactNumber } = req.body;
   const finalName = name || fullName;
 
   if (isNaN(id)) return res.status(400).json({ message: 'Invalid ID' });
@@ -81,8 +83,8 @@ exports.updatePatient = async (req, res) => {
       [finalName, email, id]
     );
     await db.query(
-      `UPDATE patients SET date_of_birth = $1, contact_number = $2, blood_type = $3, emergency_contact_name = $4, emergency_contact_number = $5 WHERE user_id = $6`,
-      [dob || null, phone || null, bloodType || null, emergencyContactName || null, emergencyContactNumber || null, id]
+      `UPDATE patients SET date_of_birth = $1, contact_number = $2, blood_type = $3, address = $4, gender = $5, emergency_contact_name = $6, emergency_contact_number = $7 WHERE user_id = $8`,
+      [dob || null, phone || null, bloodType || null, address || null, gender || null, emergencyContactName || null, emergencyContactNumber || null, id]
     );
     res.json({ message: 'Patient updated successfully' });
   } catch (error) {
@@ -108,7 +110,7 @@ exports.deletePatient = async (req, res) => {
 exports.getAllStaff = async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT id, full_name AS name, email, role,
+      SELECT id, full_name AS name, email, role, phone, specialty,
              created_at AS "createdAt"
       FROM users
       WHERE role IN ('doctor', 'nurse', 'admin')
@@ -118,6 +120,70 @@ exports.getAllStaff = async (req, res) => {
   } catch (error) {
     console.error('Error fetching staff:', error);
     res.status(500).json({ message: 'Server error while fetching staff' });
+  }
+};
+
+// POST /api/admin/staff — create a new staff member
+exports.createStaff = async (req, res) => {
+  const { name, fullName, email, phone, role, specialty, password } = req.body;
+  const finalName = name || fullName;
+
+  if (!finalName || !email || !role) {
+    return res.status(400).json({ message: 'Name, email and role are required.' });
+  }
+
+  try {
+    // Check for duplicate email
+    const checkResult = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (checkResult.rows.length > 0) {
+      return res.status(400).json({ message: 'A user with this email already exists.' });
+    }
+
+    const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
+    const passwordToStore = password || 'staff123';
+
+    const result = await db.query(
+      `INSERT INTO users (username, password_hash, role, full_name, email, phone, specialty)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, full_name AS name, email, role, phone, specialty, created_at AS "createdAt"`,
+      [username, passwordToStore, role, finalName, email, phone || null, specialty || null]
+    );
+
+    res.status(201).json({
+      message: 'Staff member created successfully',
+      staff: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error creating staff:', error);
+    res.status(500).json({ message: 'Server error while creating staff' });
+  }
+};
+
+// PUT /api/admin/staff/:id — update a staff member
+exports.updateStaff = async (req, res) => {
+  const { id } = req.params;
+  const { name, fullName, email, phone, role, specialty } = req.body;
+  const finalName = name || fullName;
+
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid ID' });
+
+  try {
+    const result = await db.query(
+      `UPDATE users 
+       SET full_name = $1, email = $2, phone = $3, role = $4, specialty = $5 
+       WHERE id = $6
+       RETURNING id, full_name AS name, email, role, phone, specialty`,
+      [finalName, email, phone || null, role, specialty || null, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    res.json({ message: 'Staff member updated successfully', staff: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating staff:', error);
+    res.status(500).json({ message: 'Server error while updating staff' });
   }
 };
 
@@ -170,3 +236,32 @@ exports.getAllAppointments = async (req, res) => {
     res.status(500).json({ message: 'Server error while fetching appointments' });
   }
 };
+
+// POST /api/admin/patients/:id/reset-password
+exports.resetPassword = async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+
+  if (isNaN(id)) return res.status(400).json({ message: 'Invalid ID' });
+  if (!newPassword) return res.status(400).json({ message: 'New password is required' });
+
+  try {
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    const result = await db.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [hashedPassword, id]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    res.status(500).json({ message: 'Server error while resetting password' });
+  }
+};

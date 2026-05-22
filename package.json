@@ -1,0 +1,15 @@
+{
+  "name": "healthsphere-root",
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../healthsphere && npm install",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd healthsphere && npm start\"",
+    "build": "cd healthsphere && npm run build",
+    "start": "cd backend && npm start",
+    "db:init": "cd backend && npm run db:init",
+    "db:seed": "cd backend && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
