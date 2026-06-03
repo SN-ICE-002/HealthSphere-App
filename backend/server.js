@@ -22,6 +22,10 @@ app.use(cors({
 app.use(express.json()); // Parse JSON bodies
 
 
+app.get('/', (req, res) => {
+  res.send('HealthSphere API is running');
+});
+
 
 // API Status routes
 app.get('/api/health', (req, res) => {
