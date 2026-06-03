@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const path = require('path');
 
 const app = express();
 
@@ -33,20 +32,10 @@ app.get('/api/health', (req, res) => {
 const routes = require('./src/routes');
 app.use('/api', routes);
 
-// Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
-  // Set static folder - use process.cwd() to ensure path works from either backend/ or backend/dist/
-  const buildPath = path.join(process.cwd(), '../healthsphere/build');
-  app.use(express.static(buildPath));
-
-  app.get('*splat', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
-} else {
-  app.get('/', (req, res) => {
-    res.send('HealthSphere API is running (Development Mode)');
-  });
-}
+// Fallback for unknown routes
+app.use((req, res) => {
+  res.status(404).json({ status: 'error', message: 'Route not found' });
+});
 
 const PORT = process.env.PORT || 5000;
 
