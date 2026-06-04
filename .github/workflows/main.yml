@@ -18,6 +18,35 @@ jobs:
         with:
           node-version: '20'
 
+      # ── Secret Validation ──
+      - name: Verify Secrets Configuration
+        run: |
+          echo "Checking repository secrets..."
+          
+          if [ -n "${{ secrets.RENDER_API_KEY }}" ]; then
+            echo "✅ RENDER_API_KEY is securely configured!"
+          else
+            echo "❌ RENDER_API_KEY is missing."
+          fi
+          
+          if [ -n "${{ secrets.RENDER_BACKEND_SERVICE_ID }}" ]; then
+            echo "✅ RENDER_BACKEND_SERVICE_ID is securely configured!"
+          else
+            echo "❌ RENDER_BACKEND_SERVICE_ID is missing."
+          fi
+          
+          if [ -n "${{ secrets.RENDER_FRONTEND_SERVICE_ID }}" ]; then
+            echo "✅ RENDER_FRONTEND_SERVICE_ID is securely configured!"
+          else
+            echo "❌ RENDER_FRONTEND_SERVICE_ID is missing."
+          fi
+          
+          if [ -n "${{ secrets.REACT_APP_API_URL }}" ]; then
+            echo "✅ REACT_APP_API_URL is securely configured!"
+          else
+            echo "❌ REACT_APP_API_URL is missing."
+          fi
+
       # ── Project Checks ──
       - name: Install dependencies
         run: npm run install:all
