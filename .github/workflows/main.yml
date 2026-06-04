@@ -18,21 +18,17 @@ jobs:
         with:
           node-version: '20'
 
-      # ── Backend Checks ──
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm install
+      # ── Project Checks ──
+      - name: Install dependencies
+        run: npm run install:all
 
-      - name: Build backend
-        run: |
-          cd backend
-          npm run build
+      - name: Build project
+        run: npm run build
+        env:
+          CI: false
 
       - name: Run backend app
-        run: |
-          cd backend
-          node server.js &
+        run: npm start &
         env:
           PORT: 5000
 
@@ -44,16 +40,3 @@ jobs:
         
       - name: Stop server
         run: pkill node || true
-
-      # ── Frontend Checks ──
-      - name: Install frontend dependencies
-        run: |
-          cd healthsphere
-          npm install
-
-      - name: Build frontend
-        run: |
-          cd healthsphere
-          npm run build
-        env:
-          CI: false
