@@ -23,13 +23,18 @@ app.use(express.json()); // Parse JSON bodies
 
 
 app.get('/', (req, res) => {
-  res.send('HealthSphere API is running');
+  res.send('API is running');
 });
 
 
 // API Status routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'success', message: 'HealthSphere API is running' });
+});
+
+//check if the API is running
+app.get('/api/check', (req, res) => {
+  res.json({ status: 'success', message: 'this check is working' });
 });
 
 // Import API routes
